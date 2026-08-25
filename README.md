@@ -1,2 +1,4 @@
 # adaptive_lrf
-A Framework that supports creating adaptive networks considering different rank at each adaptive layer
+This repository provides a Framework that supports creating adaptive networks considering different LRF ranks at each adaptive layer.
+
+The source code will be released by September 30th 2026.
