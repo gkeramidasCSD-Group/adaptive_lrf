@@ -1,4 +1,4 @@
-This is the official implementation of paper "Adaptive Low-Rank Factorization for Dynamic
+This is the official implementation of the paper "Adaptive Low-Rank Factorization for Dynamic
 DNN Inference on Edge Devices".
 
 # Adaptive LRF Framework
