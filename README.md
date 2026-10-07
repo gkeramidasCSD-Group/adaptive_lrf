@@ -134,7 +134,10 @@ Run with:
 python adaptive_training.py --config configs/adaptive/my_run.json
 ```
 
-## Supported architectures
+## Built-in architectures
+
+The framework isn't limited to these - see `arch/README.md`'s "Adding a
+network" section for how to add another one.
 
 **Backbones** (`arch/models_baseline.py`, used by `train_base.py`):
 `mnist_lenet_5`, `cifar10_alexnet_v2`, `cifar10_convnext`,
