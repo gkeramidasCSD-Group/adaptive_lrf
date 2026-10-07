@@ -1,0 +1,16 @@
+{
+  "cmd": "train",
+  "arch": "cifar10_alexnet_v2",
+  "dataset": "cifar10",
+  "epochs": 200,
+  "batch_size": 128,
+  "optimizer": "sgd",
+  "lr": 0.01,
+  "momentum": 0.9,
+  "weight_decay": 0.0001,
+  "criterion": "cross_entropy",
+  "criterion_kwargs": {
+    "label_smoothing": 0.1
+  },
+  "metric": "accuracy"
+}

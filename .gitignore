@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# datasets downloaded by data.py (torchvision root='/tmp/data' by default,
+# but a local ./data is common too)
+data/
+
+# training outputs
+save_checkpoints/
+saved_checkpoints/
+logs/
+*.pth
+*.pth.tar
+*.log
+
+.DS_Store
+.ipynb_checkpoints/

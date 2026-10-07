@@ -1,0 +1,16 @@
+{
+  "cmd": "train",
+  "arch": "cifar10_efficienformer_l3",
+  "dataset": "cifar10",
+  "epochs": 200,
+  "batch_size": 128,
+  "optimizer": "adam",
+  "lr": 0.001,
+  "momentum": 0.9,
+  "weight_decay": 0.0001,
+  "criterion": "cross_entropy",
+  "criterion_kwargs": {
+    "label_smoothing": 0.1
+  },
+  "metric": "accuracy"
+}

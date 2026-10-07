@@ -1,0 +1,25 @@
+{
+  "cmd": "train",
+  "arch": "cifar10_convnext_adaptive",
+  "dataset": "cifar10",
+  "resume": "saved_checkpoints/backbone_convnext_cifar10_LR4e3_cosine_200e_20251201/cifar10_convnext/model_best.pth.tar",
+  "compression_ratios": [
+    0.75,
+    0.5,
+    0.25
+  ],
+  "epochs": 300,
+  "batch_size": 128,
+  "lr": 0.001,
+  "optimizer": "sgd",
+  "momentum": 0.9,
+  "weight_decay": 0.001,
+  "beta": 0.001,
+  "fine_tune_epochs": 10,
+  "gate_warmup_epochs": 5,
+  "include_original_weight": true,
+  "criterion": "cross_entropy",
+  "metric": "accuracy",
+  "metric_base_value": 82.77,
+  "metric_drop_thr": 2
+}

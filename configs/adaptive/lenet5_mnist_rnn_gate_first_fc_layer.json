@@ -1,0 +1,25 @@
+{
+  "cmd": "train",
+  "dataset": "mnist",
+  "resume": "saved_checkpoints/backbone_lenet5_mnist_LR1e3_100e_SGDOptimizer_20260118/mnist_lenet_5/model_best.pth.tar",
+  "compression_ratios": [
+    0.75,
+    0.5,
+    0.25
+  ],
+  "epochs": 300,
+  "batch_size": 128,
+  "lr": 0.001,
+  "optimizer": "sgd",
+  "momentum": 0.9,
+  "weight_decay": 0.001,
+  "beta": 0.001,
+  "fine_tune_epochs": 10,
+  "gate_warmup_epochs": 5,
+  "criterion": "cross_entropy",
+  "metric": "accuracy",
+  "arch": "lenet5_mnist_rnn_gate_first_fc_layer",
+  "include_original_weight": true,
+  "metric_base_value": 98.99,
+  "metric_drop_thr": 2
+}

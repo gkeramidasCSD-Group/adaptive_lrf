@@ -1,0 +1,11 @@
+torch
+torchvision
+torchaudio
+timm
+tensorly
+fvcore
+numpy
+librosa
+torchsummary
+torchviz
+hiddenlayer
