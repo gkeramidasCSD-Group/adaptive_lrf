@@ -128,10 +128,11 @@ backbone checkpoint, not an adaptive one):
 }
 ```
 
-Run with:
+## Run with:
 
 ```bash
-python adaptive_training.py --config configs/adaptive/my_run.json
+python train_base.py --config configs/baseline/mnist_lenet_5.json
+python adaptive_training.py --config configs/adaptive/lenet5_mnsit_rnn_gate_two_fc_layers.json
 ```
 
 ## Built-in architectures
