@@ -115,7 +115,7 @@ def calculate_tucker_flops(ranks, in_spatial_size, out_spatial_size, in_channels
         if rank == math.inf:
             flops = calculate_Conv2D_flops(out_spatial_size, in_channels, out_channels, kernel_size)
         else:
-            flops = (2 * spatial_in * in_channels) + (2 * rank * rank * spatial_out * kernel_vol) + (2 * rank * spatial_out * out_channels) + (spatial_out * out_channels)
+            flops = (2 * rank * spatial_in * in_channels) + (2 * rank * rank * spatial_out * kernel_vol) + (2 * rank * spatial_out * out_channels) + (spatial_out * out_channels)
             if isinstance(flops, torch.Tensor):
                 flops = flops.item()
         flops_per_rank.append(int(round(flops)))
