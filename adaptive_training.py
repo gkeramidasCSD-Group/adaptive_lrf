@@ -42,7 +42,7 @@ from modules.lrf import (
     Conv_Tucker_NonUnified, Conv_Tucker_Unified,
 )
 from configs.config_utils import (
-    load_config, SCENARIO_DEFAULTS, build_optimizer, build_criterion, build_metric,
+    load_config, load_checkpoint, SCENARIO_DEFAULTS, build_optimizer, build_criterion, build_metric,
     gate_num_classes_for, gate_class_labels, is_plain_arch, set_seed,
 )
 from data import *
@@ -825,24 +825,21 @@ def run_training(args):
     # joint training loop below. (To evaluate an already-adaptive
     # checkpoint instead of retraining it, use `cmd: "test"` / test_model.)
     if args.resume:
-        if os.path.isfile(args.resume):
-            logging.info('=> loading checkpoint `{}`'.format(args.resume))
-            checkpoint = torch.load(args.resume)
+        logging.info('=> loading checkpoint `{}`'.format(args.resume))
+        checkpoint = load_checkpoint(args.resume)
 
-            model.load_state_dict(checkpoint['state_dict'], strict=False)
-            logging.info('=> loaded backbone checkpoint `{}`'.format(args.resume))
+        model.load_state_dict(checkpoint['state_dict'], strict=False)
+        logging.info('=> loaded backbone checkpoint `{}`'.format(args.resume))
 
-            apply_lrf_on_target_layers(model, checkpoint)
-            logging.info('=> LRF applied to the model')
-            fine_tune_weights(model, args, adaptive_layers, train_loader, test_loader, layers_full_flops, flops_per_rank,
-                               criterion, metric_fn)
-            logging.info('=> low-rank weights fine-tuned')
+        apply_lrf_on_target_layers(model, checkpoint)
+        logging.info('=> LRF applied to the model')
+        fine_tune_weights(model, args, adaptive_layers, train_loader, test_loader, layers_full_flops, flops_per_rank,
+                           criterion, metric_fn)
+        logging.info('=> low-rank weights fine-tuned')
 
-            warmup_gate(model, args, adaptive_layers, train_loader, test_loader, compression_rates, network_depth,
-                        layers_full_flops, flops_per_rank, criterion, metric_fn)
-            logging.info('=> gate warmed up')
-        else:
-            logging.info('=> no checkpoint found at `{}`'.format(args.resume))
+        warmup_gate(model, args, adaptive_layers, train_loader, test_loader, compression_rates, network_depth,
+                    layers_full_flops, flops_per_rank, criterion, metric_fn)
+        logging.info('=> gate warmed up')
 
     cudnn.benchmark = False
 
@@ -1040,17 +1037,14 @@ def test_model(args):
     model = model.cuda()
 
     if args.resume:
-        if os.path.isfile(args.resume):
-            logging.info('=> loading checkpoint `{}`'.format(args.resume))
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            best_prec1 = checkpoint['best_prec1']
-            model.load_state_dict(checkpoint['state_dict'],strict=True)
-            logging.info('=> loaded checkpoint `{}` (epoch: {})'.format(
-                args.resume, checkpoint['epoch']
-            ))
-        else:
-            logging.info('=> no checkpoint found at `{}`'.format(args.resume))
+        logging.info('=> loading checkpoint `{}`'.format(args.resume))
+        checkpoint = load_checkpoint(args.resume)
+        args.start_epoch = checkpoint['epoch']
+        best_prec1 = checkpoint['best_prec1']
+        model.load_state_dict(checkpoint['state_dict'],strict=True)
+        logging.info('=> loaded checkpoint `{}` (epoch: {})'.format(
+            args.resume, checkpoint['epoch']
+        ))
     cudnn.benchmark = False
     test_loader = prepare_test_data(dataset=args.dataset,
                                     batch_size=args.batch_size,

@@ -22,6 +22,29 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def load_checkpoint(path):
+    """Load the checkpoint at `path` (the config's `resume`) and return it.
+
+    Raises instead of silently continuing without it: FileNotFoundError if
+    `path` is not an existing file, RuntimeError if torch.load fails or the
+    result has no 'state_dict' entry. Callers only call this when `resume`
+    is set; an empty `resume` still means "no checkpoint"."""
+    import os
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"resume checkpoint not found: {path!r} (set 'resume' in the "
+            f"config to an existing checkpoint file, or to \"\" for none)")
+    try:
+        checkpoint = torch.load(path)
+    except Exception as e:
+        raise RuntimeError(f"could not load resume checkpoint {path!r}: {e}") from e
+    if not isinstance(checkpoint, dict) or 'state_dict' not in checkpoint:
+        raise RuntimeError(
+            f"resume checkpoint {path!r} has no 'state_dict' entry; "
+            f"it was not saved by this framework")
+    return checkpoint
+
+
 def load_config(config_path, defaults):
     """Load a JSON config, overlay it onto `defaults`, and return an
     argparse.Namespace (so downstream code can keep using `args.foo`)."""

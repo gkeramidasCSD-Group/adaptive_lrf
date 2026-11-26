@@ -20,7 +20,7 @@ import time
 import logging
 import math
 from arch import models_baseline as models
-from configs.config_utils import load_config, BASE_DEFAULTS, build_optimizer, build_criterion, build_metric, set_seed
+from configs.config_utils import load_config, load_checkpoint, BASE_DEFAULTS, build_optimizer, build_criterion, build_metric, set_seed
 from data import *
 
 
@@ -107,19 +107,16 @@ def run_training(args):
     best_prec1 = 0
     # optionally resume from a checkpoint
     if args.resume:
-        if os.path.isfile(args.resume):
-            logging.info('=> loading checkpoint `{}`'.format(args.resume))
-            checkpoint = torch.load(args.resume)
-            new_state_dict = {
-                k: v for k, v in checkpoint['state_dict'].items()
-                if not k.startswith('classifier.')
-            }
-            model.load_state_dict(new_state_dict, strict=False)
-            logging.info('=> loaded checkpoint `{}` (epoch: {})'.format(
-                args.resume, 0
-            ))
-        else:
-            logging.info('=> no checkpoint found at `{}`'.format(args.resume))
+        logging.info('=> loading checkpoint `{}`'.format(args.resume))
+        checkpoint = load_checkpoint(args.resume)
+        new_state_dict = {
+            k: v for k, v in checkpoint['state_dict'].items()
+            if not k.startswith('classifier.')
+        }
+        model.load_state_dict(new_state_dict, strict=False)
+        logging.info('=> loaded checkpoint `{}` (epoch: {})'.format(
+            args.resume, 0
+        ))
 
     cudnn.benchmark = False
 
@@ -287,17 +284,14 @@ def test_model(args):
     model = models.__dict__[args.arch](args.pretrained)
     model = model.cuda()
     if args.resume:
-        if os.path.isfile(args.resume):
-            logging.info('=> loading checkpoint `{}`'.format(args.resume))
-            checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            best_prec1 = checkpoint['best_prec1']
-            model.load_state_dict(checkpoint['state_dict'])
-            logging.info('=> loaded checkpoint `{}` (epoch: {})'.format(
-                args.resume, checkpoint['epoch']
-            ))
-        else:
-            logging.info('=> no checkpoint found at `{}`'.format(args.resume))
+        logging.info('=> loading checkpoint `{}`'.format(args.resume))
+        checkpoint = load_checkpoint(args.resume)
+        args.start_epoch = checkpoint['epoch']
+        best_prec1 = checkpoint['best_prec1']
+        model.load_state_dict(checkpoint['state_dict'])
+        logging.info('=> loaded checkpoint `{}` (epoch: {})'.format(
+            args.resume, checkpoint['epoch']
+        ))
 
     cudnn.benchmark = False
     test_loader = prepare_test_data(dataset=args.dataset,
