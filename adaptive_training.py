@@ -40,6 +40,7 @@ from modules.lrf import (
     Linear_SVD_NonUnified, Linear_SVD_Unified,
     Conv1x1_SVD_NonUnified, Conv1x1_SVD_Unified,
     Conv_Tucker_NonUnified, Conv_Tucker_Unified,
+    ORIGINAL_WEIGHT, MIN_RANK,
 )
 from configs.config_utils import (
     load_config, load_checkpoint, SCENARIO_DEFAULTS, build_optimizer, build_criterion, build_metric,
@@ -263,8 +264,12 @@ def _compute_layer_ranks_and_flops(adaptive_layers, compression_rates):
 
     Output: (ranks_per_layer, flops_per_rank, layers_full_flops) - three
     lists, one entry per layer; ranks_per_layer/flops_per_rank each list
-    one value per gate choice (including the min-rank and original-weight
-    choices where present), layers_full_flops is the layer's single
+    one value per gate class, in gate-class order (index k is what the
+    cost regularizer multiplies `masks[layer][k]` by; see
+    modules.lrf.ordered_gate_choices): the min-rank choice if the layer has
+    one, one per compression ratio, then the original-weight choice. The
+    original-weight entry is always present, and simply goes unused when
+    the gate has no such class. layers_full_flops is the layer's single
     uncompressed FLOPs count."""
     ranks_per_layer = []
     flops_per_rank = []
@@ -273,7 +278,7 @@ def _compute_layer_ranks_and_flops(adaptive_layers, compression_rates):
         module = layer['module']
         layer_ranks = []
         if module.min_rank is not None:
-            layer_ranks.append(int(module.min_rank.item())) # for the min-rank choice that is corresponding to the compression_ratio of 99
+            layer_ranks.append(int(module.min_rank.item())) # the min-rank (MIN_RANK) choice, first
 
         if layer['kind'] == 'tucker':
             in_spatial_size = module.in_spatial_size.tolist()
@@ -303,6 +308,24 @@ def _compute_layer_ranks_and_flops(adaptive_layers, compression_rates):
             flops_per_rank.append(calculate_svd_fc_flops(layer_ranks, module.in_features.item(), module.out_features.item()))
             layers_full_flops.append(calculate_fc_flops(module.in_features.item(), module.out_features.item()))
     return ranks_per_layer, flops_per_rank, layers_full_flops
+
+
+def _check_gate_choices(adaptive_layers, compression_rates, gate_num_classes, flops_per_rank):
+    """Fails fast if the gate's class count, any layer's own ordered
+    choices (what its model's forward() builds a candidate for) and the
+    FLOPs table disagree - otherwise the cost regularizer would silently
+    charge gate class k another choice's FLOPs."""
+    for layer, layer_flops in zip(adaptive_layers, flops_per_rank):
+        choices = layer['module'].gate_choices(compression_rates)
+        if len(choices) != gate_num_classes:
+            raise ValueError(
+                f"{layer['name']}: the gate has {gate_num_classes} classes but the layer "
+                f"has {len(choices)} choices {choices} - check min_rank / "
+                f"include_original_weight in the config")
+        if len(layer_flops) < len(choices):
+            raise ValueError(
+                f"{layer['name']}: FLOPs table has {len(layer_flops)} entries for "
+                f"{len(choices)} gate choices {choices}")
 
 
 def match_adaptive_layers_to_baseline(model, baseline_candidates):
@@ -394,8 +417,9 @@ def apply_lrf_on_target_layers(adaptive_model, checkpoint):
 
 def _freeze_all_but_biggest_choice(adaptive_layers):
     """Freezes every per-choice sub-module of each low-rank layer except
-    its biggest (least-compressed) choice - the '0' (original-weight)
-    choice if present, else the smallest compression ratio. Unified-variant
+    its biggest (least-compressed) choice - the original-weight
+    (ORIGINAL_WEIGHT) choice if present, else the smallest compression
+    ratio (which may be 0). Unified-variant
     layers have no per-choice sub-modules (every choice is a slice of one
     shared basis) and are left untouched.
 
@@ -408,10 +432,10 @@ def _freeze_all_but_biggest_choice(adaptive_layers):
         if choices is None:
             continue
         keys = list(choices.keys())
-        if '0' in keys:
-            biggest_key = '0'
+        if ORIGINAL_WEIGHT in keys:
+            biggest_key = ORIGINAL_WEIGHT
         else:
-            biggest_key = min((k for k in keys if k != '99'), key=lambda k: float(k))
+            biggest_key = min((k for k in keys if k != MIN_RANK), key=lambda k: float(k))
         for key, submodule in choices.items():
             for param in submodule.parameters():
                 param.requires_grad = (key == biggest_key)
@@ -574,7 +598,7 @@ def warmup_gate(model, args, adaptive_layers, train_loader, test_loader, compres
                 sample_number = reduce((lambda x, y: x * y), masks[layer][0].shape)
                 full_layer = sample_number * layers_full_flops[layer]
                 computation_all += full_layer
-                for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)):
+                for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)):
                     computation_cost += masks[layer][k].sum() * flops_per_rank[layer][k]
 
             cp_ratio = (float(computation_cost.item()) / float(computation_all)) * 100
@@ -678,7 +702,7 @@ def run_epoch(model, args, epoch, train_loader, test_loader, compression_rates, 
             sample_number = reduce((lambda x, y: x * y), masks[layer][0].shape)
             full_layer = sample_number * layers_full_flops[layer]
             computation_all  += full_layer
-            for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)):
+            for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)):
                 computation_cost += masks[layer][k].sum() * flops_per_rank[layer][k]
 
         cp_ratio = (float(computation_cost.item()) / float(computation_all)) * 100
@@ -777,7 +801,7 @@ def run_training(args):
     # create model
     min_compression = 99 if not compression_rates else compression_rates[-1]
     min_rank_arg = min_rank_argument(args)
-    gate_num_classes = gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)
+    gate_num_classes = gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)
     model_kwargs = {'gate_num_classes': gate_num_classes}
     if is_plain_arch(args.arch):
         # Unified layers share one basis across all choices, so there's no
@@ -794,6 +818,7 @@ def run_training(args):
         f"forward() and the layer-discovery walk disagree on the layer count."
     )
     ranks_per_layer, flops_per_rank, layers_full_flops = _compute_layer_ranks_and_flops(adaptive_layers, compression_rates)
+    _check_gate_choices(adaptive_layers, compression_rates, gate_num_classes, flops_per_rank)
 
     print("======================================== Compression/Rank/FLOPs info ===================================")
     print(f"{'compression_rates':>20}: {str(compression_rates):<15}")
@@ -910,12 +935,15 @@ def validate(args, test_loader, model, criterion, metric_fn, layers_full_flops_a
     layerwise_decision_statistics = []
     for k in range(network_depth):
         layerwise_decision_statistics.append([])
-        for j in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)):
+        for j in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)):
             ratio = AverageMeter()
             layerwise_decision_statistics[k].append(ratio)
 
     if layers_full_flops_arr is None:
         ranks_per_layer, flops_per_rank, layers_full_flops = _compute_layer_ranks_and_flops(adaptive_layers, compression_rates)
+        _check_gate_choices(adaptive_layers, compression_rates,
+                            gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank),
+                            flops_per_rank)
     else:
         flops_per_rank = flops_per_rank_arr
         layers_full_flops = layers_full_flops_arr
@@ -923,7 +951,7 @@ def validate(args, test_loader, model, criterion, metric_fn, layers_full_flops_a
     # switch to evaluation mode
     model.eval()
     end = time.time()
-    count_c = [ [0] * gate_num_classes_for(args.arch, compression_rates, args.include_original_weight) for _ in range(network_depth)]
+    count_c = [ [0] * gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank) for _ in range(network_depth)]
     final_computations_all = 0
     final_computations_dynamic = 0
     for i, (input, target) in enumerate(test_loader):
@@ -946,11 +974,11 @@ def validate(args, test_loader, model, criterion, metric_fn, layers_full_flops_a
             gate_tensor = torch.stack(masks[layer])  # shape: (num_gates, batch_size)
             gate_tensor = gate_tensor.T              # shape: (batch_size, num_gates)
             selected_layer_per_sample = gate_tensor.argmax(dim=1)
-            counts = torch.bincount(selected_layer_per_sample, minlength=(len(compression_rates)+1))
-            for c in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)):
+            counts = torch.bincount(selected_layer_per_sample, minlength=gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank))
+            for c in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)):
                 count_c[layer][c] += counts[c].item()
 
-            for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)):
+            for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)):
                 dynamic_choice = masks[layer][k].sum()
                 ratio = dynamic_choice / sample_number
                 layerwise_decision_statistics[layer][k].update(ratio, 1)
@@ -972,7 +1000,7 @@ def validate(args, test_loader, model, criterion, metric_fn, layers_full_flops_a
 
         final_computations_dynamic_2 = 0.0
         for layer in  range(network_depth):
-            for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)):
+            for k in range(gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)):
                 final_computations_dynamic_2 += count_c[layer][k] * flops_per_rank[layer][k]
         if i % args.print_freq == 0 or (i == (len(test_loader) - 1)):
             logging.info(
@@ -997,7 +1025,7 @@ def validate(args, test_loader, model, criterion, metric_fn, layers_full_flops_a
     print(f"{'final_computations_all':>30}: {final_computations_all:<20}")
     print("========================================================================================================\n\n")
 
-    class_labels = gate_class_labels(args.arch, compression_rates, args.include_original_weight)
+    class_labels = gate_class_labels(args.arch, compression_rates, args.include_original_weight, args.min_rank)
     for layer in range(network_depth):
         print(f"{adaptive_layers[layer]['name']} decision distribution:")
         for g, label in enumerate(class_labels):
@@ -1025,7 +1053,7 @@ def test_model(args):
     compression_rates = args.compression_ratios
     costs = compression_rates
     min_compression = 99 if not compression_rates else compression_rates[-1]
-    gate_num_classes = gate_num_classes_for(args.arch, compression_rates, args.include_original_weight)
+    gate_num_classes = gate_num_classes_for(args.arch, compression_rates, args.include_original_weight, args.min_rank)
     model_kwargs = {'gate_num_classes': gate_num_classes}
     if is_plain_arch(args.arch):
         # Unified layers share one basis across all choices, so there's no

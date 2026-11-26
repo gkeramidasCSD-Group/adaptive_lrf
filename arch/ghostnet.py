@@ -284,8 +284,9 @@ class ConvBnAct_adaptive(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios, control_module = None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
 
         prefix = "conv"
         batch_size = x.size(0)
@@ -295,25 +296,20 @@ class ConvBnAct_adaptive(nn.Module):
 
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates.append(out)
-            if self.include_original_weight:
-                output_candidates.append(getattr(self, f"{prefix}_svd_layer")(x, 0))
         mask_list = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -366,8 +362,9 @@ class SqueezeExcite_adaptive(nn.Module):
 
     def forward(self, x, compression_ratios, control_module = None):
 
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
         x_se = self.avg_pool(x)
 
         prefix = "conv_reduce"
@@ -378,25 +375,20 @@ class SqueezeExcite_adaptive(nn.Module):
 
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x_se, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x_se, choices[k])
                 output_candidates.append(out)
-            if self.include_original_weight:
-                output_candidates.append(getattr(self, f"{prefix}_svd_layer")(x_se, 0))
         mask_list = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x_se = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+            x_se = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x_se.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x_se[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x_se = torch.cat(x_out, dim=0)
@@ -413,25 +405,20 @@ class SqueezeExcite_adaptive(nn.Module):
 
         output_candidates_2 = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x_se, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x_se, choices[k])
                 output_candidates_2.append(out)
-            if self.include_original_weight:
-                output_candidates_2.append(getattr(self, f"{prefix}_svd_layer")(x_se, 0))
         mask_list_2 = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list_2.append(mask_one[:,j])
         if self.training:
-            x_se = sum([broadcast_mask(mask_list_2[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(num_classes)])
+            x_se = sum([broadcast_mask(mask_list_2[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x_se.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x_se[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x_se = torch.cat(x_out, dim=0)
@@ -496,9 +483,10 @@ class GhostModule_adaptive(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios, control_module = None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         if self.adaptive is True:
-            num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
             prefix = "primary_conv_0"
             batch_size = x.size(0)
             control_module.hidden_one = control_module.init_hidden(batch_size)
@@ -507,25 +495,20 @@ class GhostModule_adaptive(nn.Module):
 
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                     output_candidates.append(out)
-                if self.include_original_weight:
-                    output_candidates.append(getattr(self, f"{prefix}_svd_layer")(x, 0))
             mask_list = []
-            for j in range(num_classes):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
             if self.training:
-                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
                 for i in range(x.size(0)):
                     idx = index[i].item()
-                    if self.include_original_weight and idx == len(compression_ratios):
-                        ratio = 0
-                    else:
-                        ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)
@@ -614,6 +597,8 @@ class GhostBottleneck_adaptive(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios, control=None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         residual = x
 
@@ -632,7 +617,6 @@ class GhostBottleneck_adaptive(nn.Module):
         masks.extend(gmasks2)
 
         if self.adaptive_shortcut is True:
-            num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
             x_res = self.shortcut[0](residual)
             x_res = self.shortcut[1](x_res)
 
@@ -644,25 +628,20 @@ class GhostBottleneck_adaptive(nn.Module):
 
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, f"{prefix}_svd_layer")(x_res, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, f"{prefix}_svd_layer")(x_res, choices[k])
                     output_candidates.append(out)
-                if self.include_original_weight:
-                    output_candidates.append(getattr(self, f"{prefix}_svd_layer")(x_res, 0))
             mask_list = []
-            for j in range(num_classes):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
             if self.training:
-                x_res = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+                x_res = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
                 for i in range(x_res.size(0)):
                     idx = index[i].item()
-                    if self.include_original_weight and idx == len(compression_ratios):
-                        ratio = 0
-                    else:
-                        ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, f"{prefix}_svd_layer")(x_res[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x_res = torch.cat(x_out, dim=0)
@@ -784,6 +763,8 @@ class GhostNet_adaptive(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         x = self.conv_stem(x)
         x = self.bn1(x)
@@ -796,7 +777,6 @@ class GhostNet_adaptive(nn.Module):
 
         x = self.global_pool(x)
 
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
         prefix = "conv_head"
         batch_size = x.size(0)
         if self.gate_type == 'rnn':
@@ -806,25 +786,20 @@ class GhostNet_adaptive(nn.Module):
 
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates.append(out)
-            if self.include_original_weight:
-                output_candidates.append(getattr(self, f"{prefix}_svd_layer")(x, 0))
         mask_list = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -877,6 +852,8 @@ class ConvBnAct_adaptive_unified(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios, control_module = None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
 
         prefix = "conv"
@@ -887,24 +864,21 @@ class ConvBnAct_adaptive_unified(nn.Module):
 
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates.append(out)
 
         mask_list = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -955,6 +929,8 @@ class SqueezeExcite_adaptive_unified(nn.Module):
 
     def forward(self, x, compression_ratios, control_module = None):
 
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         x_se = self.avg_pool(x)
 
@@ -966,22 +942,22 @@ class SqueezeExcite_adaptive_unified(nn.Module):
 
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x_se, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x_se, choices[k])
                 output_candidates.append(out)
 
         mask_list = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x_se = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+            x_se = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x_se.size(0)):
                 idx = index[i].item()
 
-                ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x_se[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x_se = torch.cat(x_out, dim=0)
@@ -998,22 +974,22 @@ class SqueezeExcite_adaptive_unified(nn.Module):
 
         output_candidates_2 = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x_se, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x_se, choices[k])
                 output_candidates_2.append(out)
 
         mask_list_2 = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list_2.append(mask_one[:,j])
         if self.training:
-            x_se = sum([broadcast_mask(mask_list_2[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(len(compression_ratios))])
+            x_se = sum([broadcast_mask(mask_list_2[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x_se.size(0)):
                 idx = index[i].item()
 
-                ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x_se[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x_se = torch.cat(x_out, dim=0)
@@ -1076,6 +1052,8 @@ class GhostModule_adaptive_unified(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios, control_module = None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         if self.adaptive is True:
             prefix = "primary_conv_0"
@@ -1086,22 +1064,22 @@ class GhostModule_adaptive_unified(nn.Module):
 
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                     output_candidates.append(out)
 
             mask_list = []
-            for j in range(len(compression_ratios)):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
             if self.training:
-                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
                 for i in range(x.size(0)):
                     idx = index[i].item()
 
-                    ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)
@@ -1185,6 +1163,8 @@ class GhostBottleneck_adaptive_unified(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios, control=None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         residual = x
 
@@ -1214,22 +1194,22 @@ class GhostBottleneck_adaptive_unified(nn.Module):
 
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, f"{prefix}_svd_layer")(x_res, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, f"{prefix}_svd_layer")(x_res, choices[k])
                     output_candidates.append(out)
 
             mask_list = []
-            for j in range(len(compression_ratios)):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
             if self.training:
-                x_res = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+                x_res = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
                 for i in range(x_res.size(0)):
                     idx = index[i].item()
 
-                    ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, f"{prefix}_svd_layer")(x_res[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x_res = torch.cat(x_out, dim=0)
@@ -1334,6 +1314,8 @@ class GhostNet_adaptive_unified(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
         x = self.conv_stem(x)
         x = self.bn1(x)
@@ -1354,22 +1336,22 @@ class GhostNet_adaptive_unified(nn.Module):
 
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates.append(out)
 
         mask_list = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
 
-                ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)

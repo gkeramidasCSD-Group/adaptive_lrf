@@ -90,6 +90,16 @@ Each script loads a JSON file via `--config`.Missing keys fall back to the defau
 - `include_original_weight` - whether to add an extra "keep the original
   weight" gate choice. Only affects the **non-unified** variant of each
   adaptive architecture - ignored for `_unified`.
+- `min_rank` - `[]` (default) for none, or a rank (`[r]`, or one per stage
+  for ConvNeXt) that adds an extra "min rank" gate choice to every adaptive
+  layer, unified or not.
+
+  The gate's classes are, in order: the min-rank choice (if `min_rank` is
+  set), each of `compression_ratios` in the order given, then the
+  original-weight choice (if present). For example `compression_ratios:
+  [0.75, 0.5, 0]`, `min_rank: [2]`, `include_original_weight: true` gives
+  5 classes: min rank, 75%, 50%, 0%, keep original weight. A ratio of `0`
+  is an ordinary (factorized) choice, separate from the original weight.
 - `optimizer` - `"sgd"` / `"adam"` / `"adamw"`.
 - `target_computation_ratio` - if set, the computation-cost regularizer's
   sign flips once the model's live computation ratio drops below this

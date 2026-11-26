@@ -168,23 +168,34 @@ def is_plain_arch(arch_name):
     return not factory.is_unified
 
 
-def gate_num_classes_for(arch_name, compression_rates, include_original_weight):
+def _gate_choices(arch_name, compression_rates, include_original_weight, min_rank):
+    """The gate's choices in gate-output order (see
+    modules.lrf.ordered_gate_choices): MIN_RANK if `min_rank` is set, the
+    compression ratios, then ORIGINAL_WEIGHT if this arch/config
+    combination adds a "keep original weight" choice."""
+    from modules.lrf import ordered_gate_choices
+    return ordered_gate_choices(compression_rates,
+                                has_min_rank=bool(min_rank),
+                                include_original_weight=is_plain_arch(arch_name) and include_original_weight)
+
+
+def gate_num_classes_for(arch_name, compression_rates, include_original_weight, min_rank):
     """Computes how many choices the gate must output for: one per
-    compression ratio, plus one more if this arch/config combination adds
-    a "keep original weight" choice. Output: an int."""
-    extra = 1 if (is_plain_arch(arch_name) and include_original_weight) else 0
-    return len(compression_rates) + extra
+    compression ratio, plus one for the min-rank choice if `min_rank` (the
+    config's list) is non-empty, plus one more if this arch/config
+    combination adds a "keep original weight" choice. Output: an int."""
+    return len(_gate_choices(arch_name, compression_rates, include_original_weight, min_rank))
 
 
-def gate_class_labels(arch_name, compression_rates, include_original_weight):
+def gate_class_labels(arch_name, compression_rates, include_original_weight, min_rank):
     """Builds a human-readable label for each of the gate's output
     classes, in the same order the model's forward() builds them in, so a
     printed per-class distribution can name its class instead of using a
     bare index. Output: a list of strings, length gate_num_classes_for(...)."""
-    labels = [f"{int(round(r * 100))}% compression" for r in compression_rates]
-    if is_plain_arch(arch_name) and include_original_weight:
-        labels.append("keep original weight")
-    return labels
+    from modules.lrf import MIN_RANK, ORIGINAL_WEIGHT
+    names = {MIN_RANK: "min rank", ORIGINAL_WEIGHT: "keep original weight"}
+    return [names[c] if isinstance(c, str) else f"{int(round(c * 100))}% compression"
+            for c in _gate_choices(arch_name, compression_rates, include_original_weight, min_rank)]
 
 
 BASE_DEFAULTS = {

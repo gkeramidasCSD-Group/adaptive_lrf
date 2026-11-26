@@ -162,8 +162,9 @@ class ConvMLP_adaptive(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios = None, control_module=None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
 
         prefix = "pw1"
         batch_size = x.size(0)
@@ -173,25 +174,20 @@ class ConvMLP_adaptive(nn.Module):
         mask_one = control_module(gate_feature)
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates.append(out)
-            if self.include_original_weight:
-                output_candidates.append(getattr(self, f"{prefix}_svd_layer")(x, 0))
         mask_list = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -209,25 +205,20 @@ class ConvMLP_adaptive(nn.Module):
         mask_one = control_module(gate_feature)
         output_candidates_2 = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates_2.append(out)
-            if self.include_original_weight:
-                output_candidates_2.append(getattr(self, f"{prefix}_svd_layer")(x, 0))
         mask_list = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(num_classes)])
+            x = sum([broadcast_mask(mask_list[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -330,7 +321,7 @@ efficientformer_l3_adaptive.is_unified = EfficientFormer_adaptive.is_unified
 
 def cifar10_efficientformer_l3_adaptive(compression_ratios, pretrained=False, min_rank=[], **kwargs):
     """Factory for EfficientFormer_adaptive, CIFAR-10 settings. Inputs: compression_ratios (list), min_rank, kwargs. Output: a model instance."""
-    model = efficientformer_l3_adaptive(compression_ratios, min_rank, num_classes=10, **kwargs)
+    model = efficientformer_l3_adaptive(compression_ratios, pretrained, min_rank=min_rank, num_classes=10, **kwargs)
     return model
 cifar10_efficientformer_l3_adaptive.is_unified = EfficientFormer_adaptive.is_unified
 
@@ -364,6 +355,8 @@ class ConvMLP_adaptive_unified(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios = None, control_module=None):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
 
         prefix = "pw1"
@@ -373,15 +366,15 @@ class ConvMLP_adaptive_unified(nn.Module):
         mask_one = control_module(gate_feature)
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates.append(out)
 
         mask_list = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+            x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
@@ -389,7 +382,7 @@ class ConvMLP_adaptive_unified(nn.Module):
                 idx = index[i].item()
 
 
-                ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -407,24 +400,21 @@ class ConvMLP_adaptive_unified(nn.Module):
         mask_one = control_module(gate_feature)
         output_candidates_2 = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, f"{prefix}_svd_layer")(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, f"{prefix}_svd_layer")(x, choices[k])
                 output_candidates_2.append(out)
 
         mask_list = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(len(compression_ratios))])
+            x = sum([broadcast_mask(mask_list[k], output_candidates_2[0]) * output_candidates_2[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, f"{prefix}_svd_layer")(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -521,6 +511,6 @@ efficientformer_l3_adaptive_unified.is_unified = EfficientFormer_adaptive_unifie
 
 def cifar10_efficientformer_l3_adaptive_unified(compression_ratios, pretrained=False, min_rank=[], **kwargs):
     """Factory for EfficientFormer_adaptive_unified, CIFAR-10 settings. Inputs: compression_ratios (list), min_rank, kwargs. Output: a model instance."""
-    model = efficientformer_l3_adaptive_unified(compression_ratios, min_rank, num_classes=10, **kwargs)
+    model = efficientformer_l3_adaptive_unified(compression_ratios, pretrained, min_rank=min_rank, num_classes=10, **kwargs)
     return model
 cifar10_efficientformer_l3_adaptive_unified.is_unified = EfficientFormer_adaptive_unified.is_unified

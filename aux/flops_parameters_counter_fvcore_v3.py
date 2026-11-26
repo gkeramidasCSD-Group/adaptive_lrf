@@ -75,7 +75,7 @@ def build_model(args):
         include_original_weight = is_plain_arch(args.arch) and args.include_original_weight
         kwargs = {
             "gate_type": args.gate_type,
-            "gate_num_classes": gate_num_classes_for(args.arch, args.compression_ratios, include_original_weight),
+            "gate_num_classes": gate_num_classes_for(args.arch, args.compression_ratios, include_original_weight, args.min_rank),
         }
         if is_plain_arch(args.arch):
             kwargs["include_original_weight"] = args.include_original_weight

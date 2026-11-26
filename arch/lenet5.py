@@ -93,12 +93,13 @@ class LeNet5_mnist_RecurrentGateSP_fisrtFCLayer(nn.Module):
 
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         batch_size = x.size(0)
 
         self.control.hidden_one = self.control.init_hidden(batch_size)
         self.control = self.control.to(x.device)
         masks = []
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
 
 
         x = F.tanh(self.conv1(x))
@@ -113,26 +114,21 @@ class LeNet5_mnist_RecurrentGateSP_fisrtFCLayer(nn.Module):
         mask_one = self.control(gate_feature)
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, 'fc1_svd_layer')(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, 'fc1_svd_layer')(x, choices[k])
                 output_candidates.append(out)
-            if self.include_original_weight:
-                output_candidates.append(getattr(self, 'fc1_svd_layer')(x, 0))
         mask_list = []
-        for j in range(num_classes):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
 
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], out) * output_candidates[k] for k in range(num_classes)])
+            x = sum([broadcast_mask(mask_list[k], out) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
             for i in range(x.size(0)):
                 idx = index[i].item()
-                if self.include_original_weight and idx == len(compression_ratios):
-                    ratio = 0
-                else:
-                    ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, 'fc1_svd_layer')(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -207,6 +203,8 @@ class LeNet5_mnist_RecurrentGateSP_fisrtFCLayer_Unified(nn.Module):
 
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         batch_size = x.size(0)
 
         self.control.hidden_one = self.control.init_hidden(batch_size)
@@ -225,16 +223,16 @@ class LeNet5_mnist_RecurrentGateSP_fisrtFCLayer_Unified(nn.Module):
         mask_one = self.control(gate_feature)
         output_candidates = []
         if self.training:
-            for k in range(len(compression_ratios)):
-                out = getattr(self, 'fc1_svd_layer')(x, compression_ratios[k])
+            for k in range(len(choices)):
+                out = getattr(self, 'fc1_svd_layer')(x, choices[k])
                 output_candidates.append(out)
 
         mask_list = []
-        for j in range(len(compression_ratios)):
+        for j in range(len(choices)):
             mask_list.append(mask_one[:,j])
 
         if self.training:
-            x = sum([broadcast_mask(mask_list[k], out) * output_candidates[k] for k in range(len(compression_ratios))])
+            x = sum([broadcast_mask(mask_list[k], out) * output_candidates[k] for k in range(len(choices))])
         else:
             index = mask_one.argmax(dim=1)
             x_out = []
@@ -242,7 +240,7 @@ class LeNet5_mnist_RecurrentGateSP_fisrtFCLayer_Unified(nn.Module):
                 idx = index[i].item()
 
 
-                ratio = compression_ratios[idx]
+                ratio = choices[idx]
                 out_i = getattr(self, 'fc1_svd_layer')(x[i].unsqueeze(0), ratio)
                 x_out.append(out_i)
             x = torch.cat(x_out, dim=0)
@@ -319,11 +317,12 @@ class LeNet5_mnist_RecurrentGateSP_2FCLayers(nn.Module):
 
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         batch_size = x.size(0)
 
         self.control.hidden_one = self.control.init_hidden(batch_size)
         masks = []
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
 
 
         x = F.tanh(self.conv1(x))
@@ -339,26 +338,21 @@ class LeNet5_mnist_RecurrentGateSP_2FCLayers(nn.Module):
             mask_one = self.control(gate_feature)
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, 'fc{}_svd_layer'.format(l+1))(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, 'fc{}_svd_layer'.format(l+1))(x, choices[k])
                     output_candidates.append(out)
-                if self.include_original_weight:
-                    output_candidates.append(getattr(self, 'fc{}_svd_layer'.format(l+1))(x, 0))
             mask_list = []
-            for j in range(num_classes):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
 
             if self.training:
-                x = sum([broadcast_mask(mask_list[k], out) * output_candidates[k] for k in range(num_classes)])
+                x = sum([broadcast_mask(mask_list[k], out) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
                 for i in range(x.size(0)):
                     idx = index[i].item()
-                    if self.include_original_weight and idx == len(compression_ratios):
-                        ratio = 0
-                    else:
-                        ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, 'fc{}_svd_layer'.format(l+1))(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)

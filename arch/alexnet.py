@@ -140,8 +140,9 @@ class AlexNetV2_Adaptive(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
-        num_classes = len(compression_ratios) + (1 if self.include_original_weight else 0)
 
         batch_size = x.size(0)
         self.control.hidden_one = self.control.init_hidden(batch_size)
@@ -150,20 +151,18 @@ class AlexNetV2_Adaptive(nn.Module):
             gate_feature = getattr(self, 'conv{}_gate'.format(l+1))(x)
             mask_one = self.control(gate_feature)
             mask_list = []
-            for j in range(num_classes):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, 'conv{}_tucker_layer'.format(l+1))(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, 'conv{}_tucker_layer'.format(l+1))(x, choices[k])
                     output_candidates.append(out)
-                if self.include_original_weight:
-                    output_candidates.append(getattr(self, 'conv{}_tucker_layer'.format(l+1))(x, 0))
 
             if self.training:
                 x = sum([
                     broadcast_mask(mask_list[k], output_candidates[k]) * output_candidates[k]
-                    for k in range(num_classes)
+                    for k in range(len(choices))
                 ])
 
             else:
@@ -171,10 +170,7 @@ class AlexNetV2_Adaptive(nn.Module):
                 x_out = []
                 for i in range(x.size(0)):
                     idx = index[i].item()
-                    if self.include_original_weight and idx == len(compression_ratios):
-                        ratio = 0
-                    else:
-                        ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, 'conv{}_tucker_layer'.format(l+1))(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)
@@ -192,7 +188,7 @@ class AlexNetV2_Adaptive(nn.Module):
             gate_feature = getattr(self, 'fc{}_gate'.format(l+1))(x)
             mask_one = self.control(gate_feature)
             mask_list = []
-            for j in range(num_classes):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
 
 
@@ -201,27 +197,21 @@ class AlexNetV2_Adaptive(nn.Module):
                 x = self.drop(x)
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, 'fc{}_svd_layer'.format(l+1))(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, 'fc{}_svd_layer'.format(l+1))(x, choices[k])
                     output_candidates.append(out)
-                if self.include_original_weight:
-                    output_candidates.append(getattr(self, 'fc{}_svd_layer'.format(l+1))(x, 0))
 
 
             if self.training:
 
 
-                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(num_classes)])
+                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
                 for i in range(x.size(0)):
                     idx = index[i].item()
-                    if self.include_original_weight and idx == len(compression_ratios):
-                        ratio = 0
-                    else:
-
-                        ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, 'fc{}_svd_layer'.format(l+1))(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)
@@ -322,6 +312,8 @@ class AlexNetV2_Adaptive_Unified(nn.Module):
         return layer, gate_layer
 
     def forward(self, x, compression_ratios):
+        # gate class k <-> choices[k] (see modules.lrf.ordered_gate_choices)
+        choices = gate_choices_for(self, compression_ratios)
         masks = []
 
         batch_size = x.size(0)
@@ -331,19 +323,19 @@ class AlexNetV2_Adaptive_Unified(nn.Module):
             gate_feature = getattr(self, 'conv{}_gate'.format(l+1))(x)
             mask_one = self.control(gate_feature)
             mask_list = []
-            for j in range(len(compression_ratios)):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, 'conv{}_tucker_layer'.format(l+1))(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, 'conv{}_tucker_layer'.format(l+1))(x, choices[k])
                     output_candidates.append(out)
 
 
             if self.training:
                 x = sum([
                     broadcast_mask(mask_list[k], output_candidates[k]) * output_candidates[k]
-                    for k in range(len(compression_ratios))
+                    for k in range(len(choices))
                 ])
 
             else:
@@ -353,7 +345,7 @@ class AlexNetV2_Adaptive_Unified(nn.Module):
                     idx = index[i].item()
 
 
-                    ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, 'conv{}_tucker_layer'.format(l+1))(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)
@@ -371,7 +363,7 @@ class AlexNetV2_Adaptive_Unified(nn.Module):
             gate_feature = getattr(self, 'fc{}_gate'.format(l+1))(x)
             mask_one = self.control(gate_feature)
             mask_list = []
-            for j in range(len(compression_ratios)):
+            for j in range(len(choices)):
                 mask_list.append(mask_one[:,j])
 
 
@@ -380,15 +372,15 @@ class AlexNetV2_Adaptive_Unified(nn.Module):
                 x = self.drop(x)
             output_candidates = []
             if self.training:
-                for k in range(len(compression_ratios)):
-                    out = getattr(self, 'fc{}_svd_layer'.format(l+1))(x, compression_ratios[k])
+                for k in range(len(choices)):
+                    out = getattr(self, 'fc{}_svd_layer'.format(l+1))(x, choices[k])
                     output_candidates.append(out)
 
 
             if self.training:
 
 
-                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(compression_ratios))])
+                x = sum([broadcast_mask(mask_list[k], output_candidates[0]) * output_candidates[k] for k in range(len(choices))])
             else:
                 index = mask_one.argmax(dim=1)
                 x_out = []
@@ -396,7 +388,7 @@ class AlexNetV2_Adaptive_Unified(nn.Module):
                     idx = index[i].item()
 
 
-                    ratio = compression_ratios[idx]
+                    ratio = choices[idx]
                     out_i = getattr(self, 'fc{}_svd_layer'.format(l+1))(x[i].unsqueeze(0), ratio)
                     x_out.append(out_i)
                 x = torch.cat(x_out, dim=0)
