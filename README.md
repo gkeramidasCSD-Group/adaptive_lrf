@@ -1,5 +1,4 @@
-This is the official implementation of the paper "Adaptive Low-Rank Factorization for Dynamic
-DNN Inference on Edge Devices".
+This is the official implementation of the paper "Kokhazad, Zahra, Milad Kokhazadeh, Georgios Keramidas, Vasilios Kelefouras, and Panagiotis Mousouliotis. Adaptive Low-Rank Factorization for Dynamic DNN Inference on Edge Devices. In 2026 29th Euromicro Conference on Digital System Design (DSD), Euromicro, 2026".
 
 # Adaptive LRF Framework
 
